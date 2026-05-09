@@ -40,13 +40,13 @@ docker-compose up -d --build
 
 This starts three containers:
 - `db` — PostgreSQL 16 (host port **5433**)
-- `backend` — FastAPI + Uvicorn (host port **8000**)
+- `backend` — FastAPI + Uvicorn (host port **8001**)
 
 The database schema and any missing columns are created automatically on first start.
 
 ### 3. Open the UI
 
-Visit **http://localhost:8000** in your browser.
+Visit **http://localhost:8001** in your browser.
 
 ### Stopping the app
 

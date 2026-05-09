@@ -25,21 +25,59 @@ A full-stack web scraper for [kleinanzeigen.de](https://www.kleinanzeigen.de) wi
 
 **Requirements:** Docker and Docker Compose installed.
 
+### 1. Clone the repository
+
 ```bash
-git clone https://github.com/slgao/ebay_kleinanzeigen_crawler.git
-cd ebay_kleinanzeigen_crawler
+git clone git@github.com:slgao/kleinanzeigen-scraper.git
+cd kleinanzeigen-scraper
+```
+
+### 2. Build and start all services
+
+```bash
 docker-compose up -d --build
 ```
 
-Open **http://localhost:8000** in your browser.
+This starts three containers:
+- `db` — PostgreSQL 16 (host port **5433**)
+- `backend` — FastAPI + Uvicorn (host port **8000**)
+
+The database schema and any missing columns are created automatically on first start.
+
+### 3. Open the UI
+
+Visit **http://localhost:8000** in your browser.
+
+### Stopping the app
+
+```bash
+docker-compose down
+```
+
+Add `-v` to also delete the database and thumbnail volumes (all scraped data will be lost):
+
+```bash
+docker-compose down -v
+```
+
+### Restarting after code changes
+
+```bash
+docker-compose up -d --build backend
+```
+
+Only the backend image needs rebuilding — the database container and its data are unaffected.
+
+---
 
 ## How to use
 
 1. Type a search term (e.g. `Wohnungsaufloesung`, `Sofa`, `iPhone`)
-2. Select a city or district from the location picker (type to filter)
+2. Select a city or district from the location picker — type to filter through 80+ German locations
 3. Click **▶ Run** — the progress bar shows items found in real time
-4. Switch to the **Browse** tab to view results; pick a run from the dropdown to scope the view
+4. Switch to the **Browse** tab to view results; pick a run from the dropdown to scope the view to that scrape only
 5. Switch to the **Analysis** tab and select a run to see price statistics and top locations
+6. Use the **Delete run** button (trash icon) next to the run selector to remove a run and its listings
 
 ## Project layout
 

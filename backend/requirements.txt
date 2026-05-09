@@ -1,0 +1,4 @@
+fastapi==0.115.12
+uvicorn==0.34.3
+psycopg2-binary==2.9.10
+Scrapy==2.15.2

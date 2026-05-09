@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: kleinanzeigen
+      POSTGRES_USER: scraper
+      POSTGRES_PASSWORD: scraper
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scraper -d kleinanzeigen"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://scraper:scraper@db:5432/kleinanzeigen
+    volumes:
+      - thumbnails:/app/thumbnails
+
+  spider:
+    build:
+      context: .
+      dockerfile: Dockerfile.spider
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://scraper:scraper@db:5432/kleinanzeigen
+    restart: "no"
+
+volumes:
+  postgres_data:
+  thumbnails:

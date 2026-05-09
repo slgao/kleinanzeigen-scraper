@@ -1,90 +1,78 @@
-#! /usr/bin/env python
-# coding=utf-8
-# ================================================================
-#   Copyright (C) 2022 * Ltd. All rights reserved.
-#
-#   Editor      : EMACS
-#   File name   : ebay_spider.py
-#   Author      : slgao
-#   Created date: Sa Apr 02 2022 11:39:46
-#   Description :
-#
-# ================================================================
 import scrapy
-import itertools as it
-import pandas as pd
-from pathlib import Path
+from ebay.items import KleinanzeigenItem
 
 
-class EbaySpider(scrapy.Spider):
+class KleinanzeigenSpider(scrapy.Spider):
     name = "ebay"
-    url = 'https://www.ebay-kleinanzeigen.de'
-    search_string = 'Kaffeemühle'
-    city_parameter = 'k0l3331'
-    page = range(1, 2, 1)
-    url_sub_string = f'/{search_string}/{city_parameter}'
-    start_urls = [
-        'https://www.ebay-kleinanzeigen.de/s-berlin/' + url_sub_string
-    ]
-    item_dict = {}
-    items = []
+    base_url = "https://www.kleinanzeigen.de"
 
-    def strip_string(self, string):
-        if string and isinstance(string, str):
-            string = string.strip()
-        elif not string:
-            return None
-        return string
+    def __init__(
+        self,
+        search_string="Wohnungsaufloesung",
+        city_slug="berlin",
+        city_code="k0l3331",
+        scrape_run_id=None,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.scrape_run_id = scrape_run_id
+        self._rank = 0
+        self.start_urls = [
+            f"https://www.kleinanzeigen.de/s-{city_slug}/{search_string}/{city_code}"
+        ]
+
+    def _strip(self, value):
+        return value.strip() if isinstance(value, str) and value.strip() else None
 
     def parse(self, response):
-        items = response.css('li.ad-listitem')
-        for item in items:
-            item_title = item.css('a.ellipsis::text').get()
-            item_description = item.css(
-                'p.aditem-main--middle--description::text').get()
-            item_price = item.css('p.aditem-main--middle--price::text').get()
-            try:
-                geo_location = item.css(
-                    'div.aditem-main--top--left::text').getall()[-1]
-            except IndexError:
-                geo_location = item.css(
-                    'div.aditem-main--top--left::text').getall()
-            item_title = self.strip_string(item_title)
-            item_description = self.strip_string(item_description)
-            item_price = self.strip_string(item_price)
-            geo_location = self.strip_string(geo_location)
-            href = item.css('a::attr(href)').get()
-            if href:
-                item_url = self.url + href
-            # print(item_title, item_description, item_price, geo_location,
-            # item_url)
-            self.items.append([
-                item_title, item_description, item_price, geo_location,
-                item_url
-            ])
-        current_page = response.css('span.pagination-current::text').get()
-        print(current_page)
-        pages = response.css('a.pagination-page')
-        pages_url_list = pages.css('a::attr(href)').getall()
-        next_page_string = 'seite:' + str(int(current_page) + 1)
-        next_page_index = [
-            i for i, p in enumerate(pages_url_list) if next_page_string in p
-        ]
-        if next_page_index:
-            next_page_index = next_page_index[0]
-        else:
+        for ad in response.css("li.ad-listitem"):
+            title = self._strip(ad.css("a.ellipsis::text").get())
+            if not title:
+                continue
+
+            self._rank += 1
+
+            item = KleinanzeigenItem()
+            item["title"] = title
+            item["description"] = self._strip(
+                ad.css("p.aditem-main--middle--description::text").get()
+            )
+            item["price"] = self._strip(
+                ad.css("p.aditem-main--middle--price-shipping--price::text").get()
+            )
+            geo_parts = ad.css("div.aditem-main--top--left::text").getall()
+            item["location"] = self._strip(geo_parts[-1]) if geo_parts else None
+
+            href = ad.css("a::attr(href)").get()
+            item["url"] = self.base_url + href if href else None
+            item["scrape_run_id"] = self.scrape_run_id
+            item["rank"] = self._rank
+
+            # Thumbnail — try src first, fall back to lazy-load data-src
+            img_url = (
+                ad.css("div.imagebox img::attr(src)").get()
+                or ad.css("div.imagebox img::attr(data-src)").get()
+                or ad.css("img.lazyload::attr(data-src)").get()
+                or ad.css("article img::attr(src)").get()
+            )
+            if img_url and (img_url.startswith("data:") or "placeholder" in img_url.lower()):
+                img_url = None
+            item["image_url"] = img_url
+
+            # Inserted date shown on the card (Heute / Gestern / DD.MM.YYYY)
+            date_parts = ad.css("div.aditem-main--top--right::text").getall()
+            item["inserted_at"] = next(
+                (self._strip(t) for t in date_parts if self._strip(t)), None
+            )
+
+            yield item
+
+        current_page = response.css("span.pagination-current::text").get()
+        if not current_page:
             return
-        next_page_url = self.url + pages_url_list[next_page_index]
-        self.item_df = pd.DataFrame(
-            self.items,
-            columns=['title', 'description', 'price', 'location', 'url'])
-        self.item_df.dropna(inplace=True)
-        if int(current_page) == 1:
-            writer = pd.ExcelWriter('items.xlsx', mode='w')
-        else:
-            writer = pd.ExcelWriter('items.xlsx',
-                                    mode='a',
-                                    if_sheet_exists='replace')
-        self.item_df.to_excel(writer, 'sheet1', index=False)
-        writer.save()
-        yield scrapy.Request(next_page_url, callback=self.parse)
+        next_marker = f"seite:{int(current_page) + 1}"
+        for href in response.css("a.pagination-page::attr(href)").getall():
+            if next_marker in href:
+                yield response.follow(href, callback=self.parse)
+                break

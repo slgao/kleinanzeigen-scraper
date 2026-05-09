@@ -1,12 +1,13 @@
-# Define here the models for your scraped items
-#
-# See documentation in:
-# https://docs.scrapy.org/en/latest/topics/items.html
-
 import scrapy
 
 
-class EbayItem(scrapy.Item):
-    # define the fields for your item here like:
-    # name = scrapy.Field()
-    pass
+class KleinanzeigenItem(scrapy.Item):
+    title = scrapy.Field()
+    description = scrapy.Field()
+    price = scrapy.Field()
+    location = scrapy.Field()
+    url = scrapy.Field()
+    scrape_run_id = scrapy.Field()
+    image_url = scrapy.Field()
+    inserted_at = scrapy.Field()   # raw date text from listing card
+    rank = scrapy.Field()          # 1-based position in search results

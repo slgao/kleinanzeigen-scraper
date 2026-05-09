@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kleinanzeigen Scraper</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <style>
+    .lc1{display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+    .lc2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+    .lc3{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+    .card{transition:box-shadow .15s,transform .15s}
+    .card:hover{box-shadow:0 4px 24px rgba(0,0,0,.10);transform:translateY(-1px)}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .spin{display:inline-block;animation:spin 1s linear infinite}
+    .progress-bar{transition:width .4s ease}
+  </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans text-gray-900">
+
+<!-- ── Header ─────────────────────────────────────────────────────────────── -->
+<header class="bg-white border-b border-gray-200 sticky top-0 z-20">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6">
+    <div class="flex items-center justify-between h-14 gap-4">
+      <div class="flex items-center gap-3 min-w-0">
+        <span class="text-xl flex-shrink-0">🏠</span>
+        <span class="font-bold whitespace-nowrap">Kleinanzeigen Scraper</span>
+        <span id="stats-badge"
+          class="hidden sm:inline-flex text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full whitespace-nowrap"></span>
+      </div>
+      <nav class="flex gap-1 flex-shrink-0">
+        <button id="tab-browse-btn"   onclick="switchTab('browse')"
+          class="px-3 py-1.5 text-sm rounded-lg font-medium transition-colors">Browse</button>
+        <button id="tab-analysis-btn" onclick="switchTab('analysis')"
+          class="px-3 py-1.5 text-sm rounded-lg font-medium transition-colors">Analysis</button>
+      </nav>
+    </div>
+  </div>
+</header>
+
+<!-- ── Scrape Panel ────────────────────────────────────────────────────────── -->
+<div class="bg-white border-b border-gray-200">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 space-y-2">
+
+    <!-- Inputs row -->
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-xs font-semibold text-gray-400 uppercase tracking-wide whitespace-nowrap">Scrape</span>
+      <input id="scrape-search" type="text" value="Wohnungsaufloesung"
+        placeholder="Search term (e.g. Wohnungsaufloesung)"
+        class="flex-1 min-w-40 border border-gray-300 rounded-lg px-3 py-1.5 text-sm
+               focus:outline-none focus:ring-2 focus:ring-blue-500" />
+      <!-- Location picker -->
+      <div class="relative" id="city-picker-wrap">
+        <input id="city-picker-input" type="text" value="Berlin"
+          placeholder="City or district…" autocomplete="off"
+          class="w-52 border border-gray-300 rounded-lg px-3 py-1.5 text-sm
+                 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          oninput="filterCities(this.value)"
+          onfocus="openCityPicker()" />
+        <div id="city-picker-dropdown"
+          class="hidden absolute z-40 top-full left-0 mt-1 w-64 bg-white border border-gray-200
+                 rounded-xl shadow-xl overflow-hidden">
+          <div class="px-3 pt-2 pb-1">
+            <p class="text-xs text-gray-400 font-medium">Cities &amp; districts</p>
+          </div>
+          <div id="city-picker-list" class="max-h-56 overflow-y-auto pb-1"></div>
+        </div>
+      </div>
+      <button id="scrape-btn" onclick="startScrape()"
+        class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700
+               disabled:opacity-50 disabled:cursor-not-allowed
+               text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors whitespace-nowrap">
+        ▶ Run
+      </button>
+    </div>
+
+    <!-- Progress row (hidden when idle) -->
+    <div id="scrape-progress-row" class="hidden">
+      <!-- Progress bar -->
+      <div class="relative h-1.5 bg-gray-100 rounded-full overflow-hidden mb-1.5">
+        <div id="progress-bar" class="progress-bar h-full bg-blue-500 rounded-full" style="width:0%"></div>
+        <div id="progress-pulse" class="hidden absolute inset-0 bg-blue-400 opacity-50 animate-pulse"></div>
+      </div>
+      <!-- Status text -->
+      <div class="flex items-center justify-between text-xs">
+        <span id="scrape-status-text" class="text-gray-500"></span>
+        <span id="scrape-action-link" class="text-blue-600 cursor-pointer hover:underline hidden"></span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Browse Tab ─────────────────────────────────────────────────────────── -->
+<div id="tab-browse" class="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+
+  <!-- Run selector row -->
+  <div class="flex flex-wrap items-center gap-3 mb-3 p-3 bg-white border border-gray-200 rounded-xl">
+    <label class="text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">Scrape run</label>
+    <select id="browse-run-select" onchange="onBrowseRunSelect()"
+      class="flex-1 min-w-48 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white
+             focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <option value="">— All listings (no run filter) —</option>
+    </select>
+    <div id="browse-run-badge" class="hidden text-xs px-3 py-1 rounded-full font-medium bg-blue-100 text-blue-700"></div>
+    <button id="browse-delete-btn" onclick="deleteRun('browse')" disabled
+      title="Delete this scrape run and its listings"
+      class="flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors
+             disabled:opacity-30 disabled:cursor-not-allowed
+             border-red-200 text-red-500 hover:bg-red-50 enabled:hover:border-red-400">
+      <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+      </svg>
+      Delete run
+    </button>
+  </div>
+
+  <!-- Filter row -->
+  <div class="flex flex-wrap gap-3 mb-3">
+    <input id="search" type="search" placeholder="Filter by title or description…"
+      class="flex-1 min-w-36 border border-gray-300 rounded-lg px-3 py-2 text-sm
+             focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
+    <select id="price-filter"
+      class="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white
+             focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <option value="">All prices</option>
+      <option value="priced">Fixed price</option>
+      <option value="vb">Negotiable (VB)</option>
+      <option value="free">No price</option>
+    </select>
+    <select id="sort"
+      class="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white
+             focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <option value="scraped_at">Scraped: newest</option>
+      <option value="inserted_at">Ad date: newest</option>
+      <option value="price_asc">Price: low → high</option>
+      <option value="price_desc">Price: high → low</option>
+      <option value="location">Location A–Z</option>
+      <option value="rank">Relevancy</option>
+      <option value="title">Title A–Z</option>
+    </select>
+    <div class="flex rounded-lg border border-gray-300 overflow-hidden">
+      <button id="btn-grid" onclick="setView('grid')" title="Grid view"
+        class="px-3 py-2 text-base transition-colors">⊞</button>
+      <button id="btn-list" onclick="setView('list')" title="List view"
+        class="px-3 py-2 text-base border-l border-gray-300 transition-colors">☰</button>
+    </div>
+  </div>
+  <p id="result-info" class="text-xs text-gray-400 mb-3"></p>
+  <div id="listings"></div>
+  <div id="pagination" class="flex flex-wrap justify-center gap-2 mt-8 pb-8"></div>
+</div>
+
+<!-- ── Analysis Tab ───────────────────────────────────────────────────────── -->
+<div id="tab-analysis" class="hidden max-w-7xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+
+  <!-- Run selector -->
+  <div class="bg-white border border-gray-200 rounded-xl p-5">
+    <label class="block text-sm font-semibold text-gray-700 mb-2">Select a scrape run to analyse</label>
+    <div class="flex flex-wrap items-center gap-3">
+      <select id="run-select" onchange="onRunSelect()"
+        class="flex-1 min-w-64 border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white
+               focus:outline-none focus:ring-2 focus:ring-blue-500">
+        <option value="">— loading runs… —</option>
+      </select>
+      <div id="run-badge" class="hidden text-xs px-3 py-1 rounded-full font-medium"></div>
+      <button id="analysis-delete-btn" onclick="deleteRun('analysis')" disabled
+        title="Delete this scrape run and its listings"
+        class="flex items-center gap-1.5 px-3 py-2 rounded-lg border text-sm font-medium transition-colors
+               disabled:opacity-30 disabled:cursor-not-allowed
+               border-red-200 text-red-500 hover:bg-red-50 enabled:hover:border-red-400">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+        </svg>
+        Delete run
+      </button>
+    </div>
+  </div>
+
+  <!-- Placeholder when nothing is selected -->
+  <div id="analysis-placeholder" class="text-center text-gray-400 py-16 text-sm">
+    Select a completed scrape run above to see its price and location analysis.
+  </div>
+
+  <!-- Analysis content (hidden until run selected) -->
+  <div id="analysis-content" class="hidden space-y-6">
+
+    <!-- Summary stat cards -->
+    <div id="analysis-summary" class="grid grid-cols-2 sm:grid-cols-4 gap-4"></div>
+
+    <!-- Numeric price stats card -->
+    <div id="price-stats-card" class="bg-white border border-gray-200 rounded-xl p-5">
+      <h2 class="font-semibold text-gray-900 mb-1">Price Range & Statistics</h2>
+      <p class="text-xs text-gray-400 mb-4">Based on listings that have a numeric price</p>
+      <div id="price-stats-grid" class="grid grid-cols-2 sm:grid-cols-5 gap-4"></div>
+    </div>
+
+    <!-- Charts row -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-white border border-gray-200 rounded-xl p-6">
+        <h2 class="font-semibold text-gray-900 mb-0.5">Price Categories</h2>
+        <p class="text-xs text-gray-400 mb-4">How listings are priced</p>
+        <div class="relative" style="height:250px"><canvas id="price-chart"></canvas></div>
+      </div>
+      <div class="bg-white border border-gray-200 rounded-xl p-6">
+        <h2 class="font-semibold text-gray-900 mb-0.5">Top Locations</h2>
+        <p class="text-xs text-gray-400 mb-4">Most frequent districts in this run</p>
+        <div class="relative" style="height:250px"><canvas id="location-chart"></canvas></div>
+      </div>
+    </div>
+
+  </div><!-- /analysis-content -->
+</div>
+
+<!-- ── Modal ──────────────────────────────────────────────────────────────── -->
+<div id="modal"
+  class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+  onclick="if(event.target===this)closeModal()">
+  <div class="bg-white rounded-2xl w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
+    <div class="flex items-start justify-between p-6 pb-4 border-b border-gray-100">
+      <h2 id="modal-title" class="font-semibold text-sm leading-snug pr-6"></h2>
+      <button onclick="closeModal()" class="text-gray-400 hover:text-gray-700 text-xl leading-none flex-shrink-0">✕</button>
+    </div>
+    <div class="p-6 pt-4 overflow-y-auto flex-1 space-y-4 text-sm">
+      <div id="modal-image-wrap" class="hidden">
+        <img id="modal-image" src="" alt="" class="w-full rounded-lg object-cover max-h-48" />
+      </div>
+      <div class="flex gap-6 flex-wrap">
+        <div><p class="text-xs text-gray-400 uppercase tracking-wide">Price</p>
+             <p id="modal-price" class="font-medium mt-0.5"></p></div>
+        <div><p class="text-xs text-gray-400 uppercase tracking-wide">Location</p>
+             <p id="modal-location" class="font-medium mt-0.5"></p></div>
+        <div><p class="text-xs text-gray-400 uppercase tracking-wide">Ad date</p>
+             <p id="modal-date" class="font-medium mt-0.5"></p></div>
+      </div>
+      <div id="modal-keywords-wrap" class="hidden">
+        <p class="text-xs text-gray-400 uppercase tracking-wide mb-1">Keywords</p>
+        <div id="modal-keywords" class="flex flex-wrap gap-1"></div>
+      </div>
+      <div class="border-t border-gray-100 pt-3">
+        <p id="modal-description" class="text-gray-600 whitespace-pre-wrap leading-relaxed"></p>
+      </div>
+    </div>
+    <div class="p-6 pt-0">
+      <a id="modal-link" href="#" target="_blank"
+        class="block w-full text-center bg-blue-600 hover:bg-blue-700
+               text-white font-medium py-2.5 rounded-xl text-sm transition-colors">
+        View on Kleinanzeigen ↗
+      </a>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+const st = {
+  page: 1, search: '', priceFilter: '', sort: 'scraped_at', viewMode: 'grid',
+  activeTab: 'browse',
+  scrapeStatus: 'idle', scrapeJobId: null, scrapeItemsExpected: 0, pollTimer: null,
+  selectedRunId: null,
+  browseRunId: '',
+};
+let _priceChart = null, _locChart = null;
+let _cachedItems = [], _cachedTotal = 0;
+let _cachedRuns = [];
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function trunc(s, n) { return s.length > n ? s.slice(0, n) + '…' : s; }
+function fmtDate(iso) {
+  return iso ? new Date(iso).toLocaleDateString('de-DE',
+    {day:'2-digit',month:'2-digit',year:'2-digit'}) : '';
+}
+function fmtDateTime(iso) {
+  return iso ? new Date(iso).toLocaleString('de-DE',
+    {day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}) : '';
+}
+function fmtPrice(v) { return v !== null && v !== undefined ? `${v.toLocaleString('de-DE')} €` : '—'; }
+function priceBadge(p) {
+  return p
+    ? `<span class="text-xs font-semibold bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full whitespace-nowrap">${esc(p)}</span>`
+    : '';
+}
+function statCard(label, value, cls, sub) {
+  return `<div class="bg-white border border-gray-200 rounded-xl p-5">
+    <p class="text-xs text-gray-400 uppercase tracking-wide">${label}</p>
+    <p class="text-2xl font-bold mt-1 ${cls}">${value}</p>
+    ${sub ? `<p class="text-xs text-gray-400 mt-0.5">${sub}</p>` : ''}
+  </div>`;
+}
+
+// ── Tab switching ─────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  st.activeTab = tab;
+  document.getElementById('tab-browse').classList.toggle('hidden', tab !== 'browse');
+  document.getElementById('tab-analysis').classList.toggle('hidden', tab !== 'analysis');
+  ['browse','analysis'].forEach(t => {
+    document.getElementById(`tab-${t}-btn`).className =
+      t === tab
+        ? 'px-3 py-1.5 text-sm rounded-lg font-medium bg-gray-100 text-gray-900 transition-colors'
+        : 'px-3 py-1.5 text-sm rounded-lg font-medium text-gray-500 hover:text-gray-700 transition-colors';
+  });
+  if (tab === 'analysis') loadRunSelector();
+  if (tab === 'browse') loadBrowseRunSelector();
+}
+
+// ── View mode ─────────────────────────────────────────────────────────────────
+function setView(mode) {
+  st.viewMode = mode;
+  ['grid','list'].forEach(m => {
+    const base = m === 'list' ? 'px-3 py-2 text-base border-l border-gray-300 transition-colors'
+                              : 'px-3 py-2 text-base transition-colors';
+    document.getElementById(`btn-${m}`).className =
+      base + (m === mode ? ' bg-gray-100 text-gray-900' : ' text-gray-500 hover:bg-gray-50');
+  });
+  if (_cachedItems.length) renderListings(_cachedItems, _cachedTotal);
+}
+
+// ── Stats bar ─────────────────────────────────────────────────────────────────
+async function fetchStats() {
+  try {
+    const { total, last_scraped } = await (await fetch('/api/stats')).json();
+    const date = last_scraped
+      ? new Date(last_scraped).toLocaleString('de-DE',{dateStyle:'short',timeStyle:'short'})
+      : 'never';
+    const el = document.getElementById('stats-badge');
+    el.textContent = `${total.toLocaleString()} listings · ${date}`;
+    el.classList.remove('hidden');
+  } catch {}
+}
+
+// ── Listings ──────────────────────────────────────────────────────────────────
+async function fetchListings() {
+  document.getElementById('listings').style.opacity = '0.5';
+  const { page, search, priceFilter, sort, browseRunId } = st;
+  const p = new URLSearchParams({ page, per_page: 20, sort });
+  if (search) p.set('search', search);
+  if (priceFilter) p.set('price_filter', priceFilter);
+  if (browseRunId) p.set('run_id', browseRunId);
+  try {
+    const data = await (await fetch(`/api/listings?${p}`)).json();
+    _cachedItems = data.items; _cachedTotal = data.total;
+    renderListings(data.items, data.total);
+    renderPagination(data.total, data.page, data.per_page);
+  } catch {
+    document.getElementById('listings').innerHTML =
+      '<p class="text-center text-red-400 py-16 text-sm">Failed to load listings.</p>';
+  } finally {
+    document.getElementById('listings').style.opacity = '1';
+  }
+}
+
+function renderListings(items, total) {
+  const info = document.getElementById('result-info');
+  const box  = document.getElementById('listings');
+  if (!items.length) {
+    info.textContent = '';
+    box.innerHTML = '<p class="text-center text-gray-400 py-16 text-sm">No listings found.</p>';
+    return;
+  }
+  const from = (st.page - 1) * 20 + 1, to = Math.min(st.page * 20, total);
+  info.textContent = `Showing ${from}–${to} of ${total.toLocaleString()} listings`;
+
+  if (st.viewMode === 'grid') {
+    box.innerHTML =
+      `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+         ${items.map(cardHTML).join('')}
+       </div>`;
+  } else {
+    box.innerHTML =
+      `<div class="bg-white rounded-xl border border-gray-200 overflow-hidden">
+         <table class="w-full text-sm">
+           <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+             <tr>
+               <th class="w-14 px-3 py-3"></th>
+               <th class="text-left px-3 py-3 font-medium">Title</th>
+               <th class="text-left px-3 py-3 font-medium w-28">Price</th>
+               <th class="text-left px-3 py-3 font-medium w-40 hidden sm:table-cell">Location</th>
+               <th class="text-left px-3 py-3 font-medium w-24 hidden md:table-cell">Date</th>
+               <th class="w-8 px-3 py-3"></th>
+             </tr>
+           </thead>
+           <tbody class="divide-y divide-gray-100">${items.map(rowHTML).join('')}</tbody>
+         </table>
+       </div>`;
+  }
+}
+
+function thumbHTML(item, cls) {
+  if (item.image_url) {
+    return `<img src="/thumbnails/${item.id}.jpg"
+                 onerror="this.onerror=null;this.src='${esc(item.image_url)}'"
+                 alt="" class="${cls}" loading="lazy" />`;
+  }
+  return `<div class="${cls} bg-gray-100 flex items-center justify-center text-gray-300 text-2xl">🖼</div>`;
+}
+
+function keywordsHTML(item) {
+  const kw = item.keywords;
+  if (!kw || !kw.length) return '';
+  return `<div class="flex flex-wrap gap-1 mt-1">
+    ${kw.slice(0,5).map(k => `<span class="text-xs bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">${esc(k)}</span>`).join('')}
+  </div>`;
+}
+
+function cardHTML(item) {
+  const d = JSON.stringify(item).replace(/'/g,"&#39;");
+  const adDate = item.inserted_at
+    ? `<span title="Ad posted">${fmtDate(item.inserted_at)}</span>`
+    : `<span title="Scraped">${fmtDate(item.scraped_at)}</span>`;
+  return `
+    <article class="card bg-white rounded-xl border border-gray-200 flex flex-col cursor-pointer overflow-hidden"
+             onclick='openModal(${d})'>
+      ${thumbHTML(item, 'w-full h-36 object-cover')}
+      <div class="p-3 flex flex-col gap-1.5 flex-1">
+        <div class="flex justify-between items-start gap-2">
+          <h3 class="font-medium text-sm leading-snug lc2 flex-1">${esc(item.title)}</h3>
+          ${priceBadge(item.price)}
+        </div>
+        <p class="text-xs text-gray-500 lc2 flex-1">${esc(item.description||'')}</p>
+        ${keywordsHTML(item)}
+        <footer class="flex justify-between items-center text-xs text-gray-400 pt-1.5 border-t border-gray-100 mt-auto">
+          <span>📍 ${esc(trunc(item.location||'—',20))}</span>
+          ${adDate}
+        </footer>
+      </div>
+    </article>`;
+}
+
+function rowHTML(item) {
+  const d = JSON.stringify(item).replace(/'/g,"&#39;");
+  return `
+    <tr class="hover:bg-gray-50 cursor-pointer" onclick='openModal(${d})'>
+      <td class="px-3 py-2.5 w-12">
+        ${thumbHTML(item, 'w-10 h-10 object-cover rounded-lg')}
+      </td>
+      <td class="px-3 py-2.5">
+        <div class="font-medium text-sm lc1">${esc(item.title)}</div>
+        <div class="text-xs text-gray-400 lc1 mt-0.5">${esc(item.description||'')}</div>
+      </td>
+      <td class="px-3 py-2.5 whitespace-nowrap">${priceBadge(item.price)||'<span class="text-gray-300 text-xs">—</span>'}</td>
+      <td class="px-3 py-2.5 text-xs text-gray-500 hidden sm:table-cell">${esc(trunc(item.location||'—',22))}</td>
+      <td class="px-3 py-2.5 text-xs text-gray-400 hidden md:table-cell whitespace-nowrap">
+        ${item.inserted_at ? fmtDate(item.inserted_at) : fmtDate(item.scraped_at)}
+      </td>
+      <td class="px-3 py-2.5">
+        <a href="${esc(item.url||'#')}" target="_blank" onclick="event.stopPropagation()"
+           class="text-blue-500 hover:text-blue-700 text-xs font-medium">↗</a>
+      </td>
+    </tr>`;
+}
+
+// ── Pagination ────────────────────────────────────────────────────────────────
+function renderPagination(total, cur, perPage) {
+  const el = document.getElementById('pagination');
+  const pages = Math.ceil(total / perPage);
+  if (pages <= 1) { el.innerHTML = ''; return; }
+  const btn = (p, lbl, active, off) =>
+    `<button onclick="goPage(${p})" ${off?'disabled':''}
+       class="px-3 py-1.5 rounded-lg text-sm border transition-colors
+              ${active?'bg-blue-600 text-white border-blue-600':'bg-white border-gray-300 hover:bg-gray-50'}
+              disabled:opacity-40 disabled:cursor-not-allowed">${lbl}</button>`;
+  const lo = Math.max(1,cur-2), hi = Math.min(pages,cur+2);
+  let h = btn(cur-1,'‹',false,cur===1);
+  if (lo>1) h += btn(1,1,false,false)+'<span class="self-center text-gray-400 px-1">…</span>';
+  for (let i=lo;i<=hi;i++) h += btn(i,i,i===cur,false);
+  if (hi<pages) h += '<span class="self-center text-gray-400 px-1">…</span>'+btn(pages,pages,false,false);
+  h += btn(cur+1,'›',false,cur===pages);
+  el.innerHTML = h;
+}
+function goPage(p) { st.page=p; fetchListings(); window.scrollTo({top:0,behavior:'smooth'}); }
+
+// ── City picker ───────────────────────────────────────────────────────────────
+let _cities = [];
+let _selectedCity = 'Berlin';
+
+async function loadCities() {
+  try {
+    _cities = await (await fetch('/api/cities')).json();
+  } catch { _cities = []; }
+  renderCityList(_cities);
+}
+
+function filterCities(q) {
+  const lq = q.toLowerCase().trim();
+  const matches = lq
+    ? _cities.filter(c => c.toLowerCase().includes(lq))
+    : _cities;
+  renderCityList(matches);
+  openCityPicker();
+}
+
+function renderCityList(list) {
+  const container = document.getElementById('city-picker-list');
+  if (!list.length) {
+    container.innerHTML = '<p class="text-xs text-gray-400 px-3 py-2">No matches</p>';
+    return;
+  }
+
+  const cityItem = (c, extra = '') => {
+    const active = c === _selectedCity ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-700 hover:bg-gray-50';
+    return `<div class="px-3 py-1.5 text-sm cursor-pointer ${active} ${extra}"
+                 onmousedown="selectCity('${c.replace(/'/g,"&#39;")}')">${c}</div>`;
+  };
+
+  // Always pin Deutschland at top if it matches the current filter
+  const hasDe = list.includes('Deutschland');
+  const rest  = list.filter(c => c !== 'Deutschland');
+
+  let html = '';
+  if (hasDe) {
+    html += `<div onmousedown="selectCity('Deutschland')"
+                  class="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer
+                         ${_selectedCity === 'Deutschland' ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-800 hover:bg-gray-50 font-medium'}">
+               <span class="text-base">🇩🇪</span> Deutschland — Ganz Deutschland
+             </div>`;
+    if (rest.length) html += '<div class="border-t border-gray-100 my-1"></div>';
+  }
+  html += rest.slice(0, 80).map(c => cityItem(c)).join('');
+  container.innerHTML = html;
+}
+
+function openCityPicker() {
+  document.getElementById('city-picker-dropdown').classList.remove('hidden');
+}
+
+function closeCityPicker() {
+  document.getElementById('city-picker-dropdown').classList.add('hidden');
+}
+
+function selectCity(name) {
+  _selectedCity = name;
+  document.getElementById('city-picker-input').value =
+    name === 'Deutschland' ? 'Deutschland (Ganz Deutschland)' : name;
+  closeCityPicker();
+}
+
+document.addEventListener('click', e => {
+  if (!document.getElementById('city-picker-wrap').contains(e.target)) {
+    closeCityPicker();
+    // Restore last valid selection if user typed something invalid
+    document.getElementById('city-picker-input').value = _selectedCity;
+  }
+});
+
+// ── Scrape ────────────────────────────────────────────────────────────────────
+async function startScrape() {
+  if (st.scrapeStatus === 'running') return;
+
+  const search = document.getElementById('scrape-search').value.trim();
+  const city   = _selectedCity || 'Berlin';
+  if (!search) {
+    showScrapeStatus('error', 'Please enter a search term.');
+    return;
+  }
+
+  st.scrapeStatus = 'running';
+  st.scrapeItemsExpected = 0;
+  showScrapeStatus('running', `Starting scrape for "${search}" in ${city}…`, 0);
+
+  try {
+    const r = await fetch('/api/scrape', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ search, city }),
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(()=>({}));
+      throw new Error(e.detail || 'Failed to start scrape');
+    }
+    const { job_id } = await r.json();
+    st.scrapeJobId = job_id;
+
+    st.pollTimer = setInterval(async () => {
+      try {
+        const job = await (await fetch(`/api/scrape/${job_id}`)).json();
+        if (job.status === 'running') {
+          showScrapeStatus('running',
+            `Scraping "${search}" in ${city} — ${job.items_so_far} items found so far…`,
+            job.items_so_far);
+        } else {
+          clearInterval(st.pollTimer);
+          st.scrapeStatus = job.status;
+          const n = job.items_so_far || 0;
+          if (job.status === 'done') {
+            showScrapeStatus('done',
+              `✓ Scraped ${n} items for "${search}" in ${city}`,
+              n, job_id);
+          } else {
+            showScrapeStatus('error', `✗ Scrape failed: ${job.detail||'unknown error'}`);
+          }
+          fetchStats();
+          reloadRunSelector(st.activeTab === 'analysis' ? job_id : null);
+          fetchListings();
+        }
+      } catch {}
+    }, 3000);
+  } catch (e) {
+    st.scrapeStatus = 'idle';
+    showScrapeStatus('error', `✗ ${e.message}`);
+  }
+}
+
+function showScrapeStatus(type, text, count, jobId) {
+  const btn  = document.getElementById('scrape-btn');
+  const row  = document.getElementById('scrape-progress-row');
+  const bar  = document.getElementById('progress-bar');
+  const pulse= document.getElementById('progress-pulse');
+  const txt  = document.getElementById('scrape-status-text');
+  const link = document.getElementById('scrape-action-link');
+
+  row.classList.remove('hidden');
+  link.classList.add('hidden');
+
+  if (type === 'running') {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spin">⟳</span> Running…';
+    bar.style.width = '100%';
+    bar.className = 'progress-bar h-full bg-blue-500 rounded-full animate-pulse';
+    txt.textContent = text;
+    txt.className = 'text-xs text-blue-600';
+  } else if (type === 'done') {
+    btn.disabled = false;
+    btn.innerHTML = '▶ Run';
+    bar.style.width = '100%';
+    bar.className = 'progress-bar h-full bg-green-500 rounded-full';
+    pulse.classList.add('hidden');
+    txt.textContent = text;
+    txt.className = 'text-xs text-green-600';
+    if (jobId) {
+      link.textContent = 'View Analysis →';
+      link.className = 'text-xs text-blue-600 cursor-pointer hover:underline';
+      link.onclick = () => { switchTab('analysis'); reloadRunSelector(jobId); };
+      link.classList.remove('hidden');
+    }
+  } else if (type === 'error') {
+    btn.disabled = false;
+    btn.innerHTML = '▶ Run';
+    bar.style.width = '100%';
+    bar.className = 'progress-bar h-full bg-red-400 rounded-full';
+    txt.textContent = text;
+    txt.className = 'text-xs text-red-500';
+  }
+}
+
+// ── Delete run ────────────────────────────────────────────────────────────────
+async function deleteRun(source) {
+  const selectId = source === 'browse' ? 'browse-run-select' : 'run-select';
+  const runId    = document.getElementById(selectId).value;
+  if (!runId) return;
+
+  const run = _cachedRuns.find(r => r.id === runId);
+  const label = run ? `"${run.search_term}" in ${run.city_name} (${run.item_count || 0} items)` : runId;
+
+  if (!confirm(`Delete scrape run ${label}?\n\nThis removes the run and all of its listings from the database. Listings shared with other runs are kept.`)) return;
+
+  const btn = document.getElementById(source === 'browse' ? 'browse-delete-btn' : 'analysis-delete-btn');
+  btn.disabled = true;
+  btn.innerHTML = btn.innerHTML.replace('Delete run', 'Deleting…');
+
+  try {
+    const r = await fetch(`/api/runs/${runId}`, { method: 'DELETE' });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || 'Delete failed');
+    const { deleted_listings } = await r.json();
+
+    // Reset the selector that triggered the delete
+    if (source === 'browse') {
+      st.browseRunId = '';
+      document.getElementById('browse-run-badge').classList.add('hidden');
+    } else {
+      st.selectedRunId = null;
+      document.getElementById('run-badge').classList.add('hidden');
+      document.getElementById('analysis-placeholder').classList.remove('hidden');
+      document.getElementById('analysis-content').classList.add('hidden');
+    }
+
+    // Refresh both selectors and listings
+    await fetchRuns();
+    document.getElementById('browse-run-select').innerHTML =
+      buildRunOptions('— All listings (no run filter) —');
+    document.getElementById('run-select').innerHTML =
+      buildRunOptions('— Select a scrape run —');
+    document.getElementById('analysis-delete-btn').disabled = true;
+    document.getElementById('browse-delete-btn').disabled = true;
+
+    fetchStats();
+    fetchListings();
+  } catch (e) {
+    alert(`Could not delete run: ${e.message}`);
+    btn.disabled = false;
+  }
+  btn.innerHTML = btn.innerHTML.replace('Deleting…', 'Delete run');
+}
+
+// ── Run list (shared cache) ───────────────────────────────────────────────────
+async function fetchRuns() {
+  try {
+    _cachedRuns = await (await fetch('/api/runs')).json();
+  } catch { _cachedRuns = []; }
+  return _cachedRuns;
+}
+
+function buildRunOptions(placeholder) {
+  const frag = [`<option value="">${placeholder}</option>`];
+  _cachedRuns.forEach(r => {
+    const dt  = fmtDateTime(r.started_at);
+    const n   = r.item_count ? `${r.item_count} items` : '…';
+    const sfx = r.status === 'running' ? ' ⟳' : r.status === 'error' ? ' ✗' : '';
+    frag.push(
+      `<option value="${r.id}" ${r.status === 'running' ? 'disabled' : ''}>` +
+      `${dt}  ·  ${r.search_term}  ·  ${r.city_name}  (${n})${sfx}</option>`
+    );
+  });
+  return frag.join('');
+}
+
+// ── Browse: run selector ──────────────────────────────────────────────────────
+async function loadBrowseRunSelector() {
+  await fetchRuns();
+  document.getElementById('browse-run-select').innerHTML =
+    buildRunOptions('— All listings (no run filter) —');
+  document.getElementById('browse-run-select').value = st.browseRunId;
+}
+
+function onBrowseRunSelect() {
+  const id = document.getElementById('browse-run-select').value;
+  st.browseRunId = id;
+  st.page = 1;
+
+  const badge  = document.getElementById('browse-run-badge');
+  const delBtn = document.getElementById('browse-delete-btn');
+  if (id) {
+    const run = _cachedRuns.find(r => r.id === id);
+    if (run) {
+      badge.textContent = `${run.search_term} · ${run.city_name}`;
+      badge.classList.remove('hidden');
+    }
+    delBtn.disabled = false;
+  } else {
+    badge.classList.add('hidden');
+    delBtn.disabled = true;
+  }
+  fetchListings();
+}
+
+// ── Analysis: run selector ────────────────────────────────────────────────────
+async function loadRunSelector() {
+  await fetchRuns();
+  document.getElementById('run-select').innerHTML =
+    buildRunOptions('— Select a scrape run —');
+  // Auto-select most recent completed run
+  const recent = _cachedRuns.find(r => r.status === 'done');
+  if (recent && !st.selectedRunId) {
+    document.getElementById('run-select').value = recent.id;
+    await showAnalysis(recent.id);
+  }
+}
+
+async function reloadRunSelector(autoSelectId) {
+  await fetchRuns();
+  document.getElementById('run-select').innerHTML =
+    buildRunOptions('— Select a scrape run —');
+  document.getElementById('browse-run-select').innerHTML =
+    buildRunOptions('— All listings (no run filter) —');
+  if (autoSelectId) {
+    document.getElementById('run-select').value = autoSelectId;
+    await showAnalysis(autoSelectId);
+  }
+}
+
+function onRunSelect() {
+  const id     = document.getElementById('run-select').value;
+  const delBtn = document.getElementById('analysis-delete-btn');
+  if (id) {
+    delBtn.disabled = false;
+    showAnalysis(id);
+  } else {
+    delBtn.disabled = true;
+    document.getElementById('analysis-placeholder').classList.remove('hidden');
+    document.getElementById('analysis-content').classList.add('hidden');
+    document.getElementById('run-badge').classList.add('hidden');
+    st.selectedRunId = null;
+  }
+}
+
+async function showAnalysis(runId) {
+  st.selectedRunId = runId;
+  document.getElementById('analysis-placeholder').classList.add('hidden');
+  document.getElementById('analysis-content').classList.remove('hidden');
+  document.getElementById('analysis-content').style.opacity = '0.5';
+
+  try {
+    const d = await (await fetch(`/api/analysis?run_id=${runId}`)).json();
+
+    // Run badge
+    const badge = document.getElementById('run-badge');
+    badge.textContent = `${d.run_info.search_term} · ${d.run_info.city_name}`;
+    badge.className = 'text-xs px-3 py-1 rounded-full font-medium bg-blue-100 text-blue-700';
+    badge.classList.remove('hidden');
+
+    renderSummaryCards(d.summary, d.price_stats);
+    renderPriceStatsCard(d.price_stats);
+    renderPriceChart(d.price_breakdown);
+    renderLocationChart(d.top_locations);
+  } catch (e) {
+    document.getElementById('analysis-content').innerHTML =
+      '<p class="text-center text-red-400 py-8 text-sm">Failed to load analysis.</p>';
+  } finally {
+    document.getElementById('analysis-content').style.opacity = '1';
+  }
+}
+
+// ── Analysis renderers ────────────────────────────────────────────────────────
+function renderSummaryCards(s, ps) {
+  const pct = s.total ? Math.round(s.with_price / s.total * 100) : 0;
+  const range = (ps.min !== null && ps.max !== null)
+    ? `${fmtPrice(ps.min)} – ${fmtPrice(ps.max)}`
+    : '—';
+  document.getElementById('analysis-summary').innerHTML =
+    statCard('Total Items',    s.total.toLocaleString(),            'text-blue-600') +
+    statCard('With Price',     `${s.with_price.toLocaleString()}`,  'text-gray-900', `${pct}% of total`) +
+    statCard('Avg Price',      fmtPrice(ps.avg),                    'text-green-600', ps.count ? `from ${ps.count} numeric prices` : 'no numeric data') +
+    statCard('Price Range',    range,                               'text-amber-600', ps.count ? `min – max` : '');
+}
+
+function renderPriceStatsCard(ps) {
+  const card = document.getElementById('price-stats-card');
+  const grid = document.getElementById('price-stats-grid');
+  if (!ps.count) {
+    card.classList.add('hidden');
+    return;
+  }
+  card.classList.remove('hidden');
+  const stats = [
+    ['Items with numeric price', ps.count],
+    ['Minimum price',            fmtPrice(ps.min)],
+    ['Maximum price',            fmtPrice(ps.max)],
+    ['Average price',            fmtPrice(ps.avg)],
+    ['Median price',             fmtPrice(ps.median)],
+  ];
+  grid.innerHTML = stats.map(([label, val]) => `
+    <div class="border border-gray-100 rounded-lg p-3">
+      <p class="text-xs text-gray-400 mb-1">${label}</p>
+      <p class="font-bold text-gray-900 text-lg">${val}</p>
+    </div>`).join('');
+}
+
+function renderPriceChart(data) {
+  if (_priceChart) _priceChart.destroy();
+  _priceChart = new Chart(
+    document.getElementById('price-chart').getContext('2d'), {
+    type: 'doughnut',
+    data: {
+      labels: data.map(d => d.category),
+      datasets: [{
+        data: data.map(d => d.count),
+        backgroundColor: ['#3B82F6','#10B981','#F59E0B','#6B7280','#EF4444'],
+        borderWidth: 2, borderColor: '#fff',
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { padding: 12, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+              const pct = Math.round(ctx.parsed / total * 100);
+              return ` ${ctx.label}: ${ctx.parsed} (${pct}%)`;
+            }
+          }
+        }
+      },
+    },
+  });
+}
+
+function renderLocationChart(data) {
+  if (_locChart) _locChart.destroy();
+  if (!data.length) return;
+  _locChart = new Chart(
+    document.getElementById('location-chart').getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: data.map(d => d.district),
+      datasets: [{
+        data: data.map(d => d.count),
+        backgroundColor: '#3B82F6',
+        borderRadius: 4,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 11 } } },
+        y: { ticks: { font: { size: 11 } } },
+      },
+    },
+  });
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+function openModal(item) {
+  document.getElementById('modal-title').textContent       = item.title;
+  document.getElementById('modal-price').textContent       = item.price || '—';
+  document.getElementById('modal-location').textContent    = item.location || '—';
+  document.getElementById('modal-date').textContent        =
+    fmtDate(item.inserted_at || item.scraped_at);
+  document.getElementById('modal-description').textContent = item.description || '—';
+  document.getElementById('modal-link').href               = item.url || '#';
+
+  // Thumbnail
+  const imgWrap = document.getElementById('modal-image-wrap');
+  const img     = document.getElementById('modal-image');
+  if (item.image_url) {
+    img.src = `/thumbnails/${item.id}.jpg`;
+    img.onerror = () => { img.src = item.image_url; img.onerror = null; };
+    imgWrap.classList.remove('hidden');
+  } else {
+    imgWrap.classList.add('hidden');
+  }
+
+  // Keywords
+  const kwWrap = document.getElementById('modal-keywords-wrap');
+  const kwBox  = document.getElementById('modal-keywords');
+  if (item.keywords && item.keywords.length) {
+    kwBox.innerHTML = item.keywords
+      .map(k => `<span class="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded">${esc(k)}</span>`)
+      .join('');
+    kwWrap.classList.remove('hidden');
+  } else {
+    kwWrap.classList.add('hidden');
+  }
+
+  document.getElementById('modal').classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+}
+function closeModal() {
+  document.getElementById('modal').classList.add('hidden');
+  document.body.style.overflow = '';
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+// ── Filter events ─────────────────────────────────────────────────────────────
+let _st;
+document.getElementById('search').addEventListener('input', e => {
+  clearTimeout(_st);
+  _st = setTimeout(() => { st.search = e.target.value.trim(); st.page = 1; fetchListings(); }, 400);
+});
+document.getElementById('price-filter').addEventListener('change', e => {
+  st.priceFilter = e.target.value; st.page = 1; fetchListings();
+});
+document.getElementById('sort').addEventListener('change', e => {
+  st.sort = e.target.value; st.page = 1; fetchListings();
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+switchTab('browse');
+setView('grid');
+fetchStats();
+loadCities();
+fetchRuns().then(() => {
+  document.getElementById('browse-run-select').innerHTML =
+    buildRunOptions('— All listings (no run filter) —');
+});
+fetchListings();
+</script>
+</body>
+</html>
